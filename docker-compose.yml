@@ -1,0 +1,214 @@
+services:
+
+  # ===========================================================================
+  # Infrastructure Services
+  # ===========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: foodsnap-postgres
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-foodsnap_db}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: foodsnap-redis
+
+    ports:
+      - "6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  # ===========================================================================
+  # Frontend
+  # ===========================================================================
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    image: foodsnapai-frontend:v1.0.0
+    container_name: foodsnap-frontend
+
+    ports:
+      - "3000:3000"
+
+    env_file:
+      - ./frontend/.env
+
+    depends_on:
+      - api-gateway
+
+
+  # ===========================================================================
+  # API Gateway
+  # ===========================================================================
+
+  api-gateway:
+    build:
+      context: ./backend./api-gateway
+      dockerfile: Dockerfile
+
+    image: foodsnapai-api-gateway:v1.0.0
+    container_name: foodsnap-api-gateway
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      FOOD_SERVICE_URL: http://food-service:8000
+      AGENT_SERVICE_URL: http://agent-service:8000
+
+    depends_on:
+      - auth-service
+      - food-service
+      # - agent-service
+
+
+  # ===========================================================================
+  # Authentication Microservice
+  # ===========================================================================
+
+  auth-service:
+    build:
+      context: ./backend./auth-service
+      dockerfile: Dockerfile
+
+    image: foodsnapai-auth-service:v1.0.0
+    container_name: foodsnap-auth-service
+
+    ports:
+      - "8001:8000"
+
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-foodsnap_db}
+      JWT_SECRET: ${JWT_SECRET}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  # ===========================================================================
+  # Food Microservice
+  # ===========================================================================
+
+  food-service:
+    build:
+      context: ./backend./food-service
+      dockerfile: Dockerfile
+
+    image: foodsnapai-food-service:v1.0.0
+    container_name: foodsnap-food-service
+
+    ports:
+      - "8002:8000"
+
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-foodsnap_db}
+
+      REDIS_URL: redis://redis:6379/0
+
+      MODEL_PATH: /app/app/model/foodsnap_efficientnet_final.keras
+
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+
+  # ===========================================================================
+  # Dramatiq Worker
+  # ===========================================================================
+
+  dramatiq-worker:
+    build:
+      context: ./backend./food-service
+      dockerfile: Dockerfile
+
+    image: foodsnapai-worker:v1.0.0
+    container_name: foodsnap-worker
+
+    command: dramatiq app.workers.food_tasks
+
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-foodsnap_db}
+
+      REDIS_URL: redis://redis:6379/0
+
+      MODEL_PATH: /app/app/model/foodsnap_efficientnet_final.keras
+
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+
+  # ===========================================================================
+  # Agent Microservice
+  # ===========================================================================
+
+  # agent-service:
+  #   build:
+  #     context: ./agent-service
+  #     dockerfile: Dockerfile
+  #
+  #   image: foodsnapai-agent-service:v1.0.0
+  #   container_name: foodsnap-agent-service
+  #
+  #   ports:
+  #     - "8004:8000"
+  #
+  #   environment:
+  #     FOOD_SERVICE_URL: http://food-service:8000
+  #     GROQ_API_KEY: ${GROQ_API_KEY}
+  #
+  #   depends_on:
+  #     - food-service
+
+
+# ===========================================================================
+# Volumes
+# ===========================================================================
+
+volumes:
+  postgres_data:

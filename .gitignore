@@ -1,0 +1,30 @@
+# Python Virtual Environments (matches any folder ending in -env or venv anywhere)
+*env/
+*.env/
+venv/
+.venv/
+env/
+ENV/
+.api-gateway-env/
+.auth-service-env/
+.food-service-env/
+# Python Cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node dependencies (frontend)
+node_modules/
+.next/
+dist/
+build/
+
+# Environment variables / secrets
+.env
+.env.local
+.env.*.local
+
+# OS / IDE generated files
+.DS_Store
+.vscode/
+.idea/

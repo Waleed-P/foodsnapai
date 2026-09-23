@@ -1,0 +1,24 @@
+@import "tailwindcss";
+/* app/globals.css */
+html, body {
+  scroll-behavior: smooth !important;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left,
+      rgba(16, 185, 129, 0.15),
+      transparent 30%),
+    radial-gradient(circle at bottom right,
+      rgba(6, 182, 212, 0.15),
+      transparent 30%);
+  pointer-events: none;
+  z-index: -1;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(200%);
+  }
+}
