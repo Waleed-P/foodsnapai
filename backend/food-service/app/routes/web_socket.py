@@ -1,33 +1,50 @@
+import asyncio
+import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import redis.asyncio as redis
-import asyncio
-import os
+from app.core.config import settings
 
-router = APIRouter()
+logger = logging.getLogger("food_service.ws")
+router = APIRouter(tags=["WebSocket"])
+
 
 @router.websocket("/ws/food/{food_id}")
 async def websocket_endpoint(websocket: WebSocket, food_id: int):
     await websocket.accept()
 
-    REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
-    redis_client = redis.from_url(REDIS_URL)
-
+    redis_client = redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+    )
     pubsub = redis_client.pubsub()
-    await pubsub.subscribe(f"food_status_{food_id}")
+    channel = f"food_status_{food_id}"
 
     try:
+        await pubsub.subscribe(channel)
+        logger.info(f"Subscribed to {channel} for food_id {food_id}")
+
         while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True)
-            if message:
-                data = message['data'].decode('utf-8')
+            # Check for message with 1 second timeout to keep loop alive
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=1.0,
+            )
+            if message and message.get("data"):
+                data = message["data"]
                 await websocket.send_text(data)
-                break  # Completes processing and exits loop
-            await asyncio.sleep(0.5)
+                logger.info(f"Forwarded status update to client for food_id {food_id}")
+                break
+
+            await asyncio.sleep(0.2)
+
     except WebSocketDisconnect:
-        print(f"Client disconnected from Food Service WS for food_id: {food_id}")
+        logger.info(f"WebSocket client disconnected for food_id: {food_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for food_id {food_id}: {e}")
     finally:
         try:
-            await pubsub.unsubscribe(f"food_status_{food_id}")
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
             await redis_client.aclose()
         except Exception:
             pass

@@ -1,72 +1,73 @@
-from fastapi import APIRouter,Depends, Response, HTTPException
-from sqlalchemy.orm import Session
-from app.model.user import UserModel
-from app.schema.user import LoginSchema
-from app.database import get_db
 from datetime import timedelta
-from app.enum.token_varients import TokenVarients
-from app.services.auth import verify_password
-from app.services.jwt_handler import create_token
+from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.security import create_token, verify_password
+from app.enums.token_variants import TokenVariants
+from app.models.user import UserModel
+from app.schemas.user import LoginSchema, MessageResponse
 
-ACCESS_TOKEN_AGE=timedelta(days=1)
-REFRESH_TOKEN_AGE=timedelta(days=2) #minutes_15
-REFRESH_TOKEN_COOKIE_AGE=2 * 24 * 60 * 60
-ACCESS_TOKEN_COOKIE_AGE=1 * 24 * 60 * 60
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
-router = APIRouter(prefix="/auth",tags=["Auth"])
-@router.post("/login")
+ACCESS_TOKEN_AGE = timedelta(days=settings.access_token_expire_days)
+REFRESH_TOKEN_AGE = timedelta(days=settings.refresh_token_expire_days)
+ACCESS_TOKEN_COOKIE_AGE = int(ACCESS_TOKEN_AGE.total_seconds())
+REFRESH_TOKEN_COOKIE_AGE = int(REFRESH_TOKEN_AGE.total_seconds())
+
+
+@router.post("/login", response_model=MessageResponse)
 def login(
     data: LoginSchema,
-    response:Response,
-    db: Session = Depends(get_db),
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
 ):
-    user = db.query(UserModel).filter(
-        UserModel.email == data.email
-    ).first()
+    user = db.scalar(
+        select(UserModel).where(UserModel.email == data.email)
+    )
 
-    if not user:
+    if not user or not user.hashed_password:
         raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
         )
 
-    if not verify_password(
-        data.password,
-        user.hashed_password
-    ):
+    if not verify_password(data.password, user.hashed_password):
         raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
         )
 
     access_token = create_token(
         {"user_id": user.id},
         ACCESS_TOKEN_AGE,
-        TokenVarients.ACCESS_TOKEN.value
-        )
+        TokenVariants.ACCESS_TOKEN.value,
+    )
     refresh_token = create_token(
         {"user_id": user.id},
         REFRESH_TOKEN_AGE,
-        TokenVarients.REFRESH_TOKEN.value
+        TokenVariants.REFRESH_TOKEN.value,
     )
+
     response.set_cookie(
-        key=TokenVarients.ACCESS_TOKEN.value,
+        key=TokenVariants.ACCESS_TOKEN.value,
         value=access_token,
         httponly=True,
-        secure=False,  # True in production
-        samesite="lax",
-        max_age=ACCESS_TOKEN_COOKIE_AGE  # 15 days
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        max_age=ACCESS_TOKEN_COOKIE_AGE,
+        path="/",
     )
-
     response.set_cookie(
-        key=TokenVarients.REFRESH_TOKEN.value,
+        key=TokenVariants.REFRESH_TOKEN.value,
         value=refresh_token,
         httponly=True,
-        secure=False,  # True in production
-        samesite="lax",
-        max_age=REFRESH_TOKEN_COOKIE_AGE # 30 days
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,
+        max_age=REFRESH_TOKEN_COOKIE_AGE,
+        path="/",
     )
 
-    return {
-        "message": "Login successful"
-    } 
+    return MessageResponse(message="Login successful")

@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 
 
 class FoodHistoryArgs(BaseModel):
-
     date: str = Field(
         description="The date to retrieve food analysis history for, in YYYY-MM-DD format."
     )

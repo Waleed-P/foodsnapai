@@ -1,5 +1,3 @@
-from enum import Enum
+from app.enums.token_variants import TokenVariants, TokenVarients
 
-class TokenVarients(str, Enum):
-    ACCESS_TOKEN = "access_token"
-    REFRESH_TOKEN = "refresh_token"
+__all__ = ["TokenVariants", "TokenVarients"]

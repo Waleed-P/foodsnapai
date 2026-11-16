@@ -1,59 +1,38 @@
+import logging
+from typing import Any, Dict
+import httpx
+from app.core.config import settings
+
+logger = logging.getLogger("agent.tools.nutrition_history")
+
+
 def get_nutrition_history(
     user_id: int,
     start_date: str,
-    end_date: str
-):
+    end_date: str,
+    auth_token: str | None = None,
+) -> Dict[str, Any]:
     """
-    Demo tool that returns nutrition history
-    for a date range.
+    Fetches daily aggregated nutrition for a user between two dates.
     """
+    try:
+        cookies = {"access_token": auth_token} if auth_token else {}
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
 
-    demo_data = [
-        {
-            "date": "2026-09-10",
-            "calories": 1750,
-            "protein": 68,
-            "carbohydrates": 210,
-            "fat": 58,
-        },
-        {
-            "date": "2026-09-11",
-            "calories": 1920,
-            "protein": 75,
-            "carbohydrates": 225,
-            "fat": 62,
-        },
-        {
-            "date": "2026-09-12",
-            "calories": 1850,
-            "protein": 71,
-            "carbohydrates": 218,
-            "fat": 60,
-        },
-        {
-            "date": "2026-09-13",
-            "calories": 650,
-            "protein": 18,
-            "carbohydrates": 37,
-            "fat": 19,
-        },
-        {
-            "date": "2026-09-14",
-            "calories": 835,
-            "protein": 65.3,
-            "carbohydrates": 82,
-            "fat": 28.3,
-        },
-    ]
-
-    result = [
-        item
-        for item in demo_data
-        if start_date <= item["date"] <= end_date
-    ]
+        with httpx.Client(timeout=5.0) as client:
+            res = client.get(
+                f"{settings.food_service_url}/food/nutrition/history",
+                params={"start_date": start_date, "end_date": end_date},
+                cookies=cookies,
+                headers=headers,
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Could not reach Food Service for nutrition history: {e}")
 
     return {
         "start_date": start_date,
         "end_date": end_date,
-        "data": result
+        "data": [],
     }

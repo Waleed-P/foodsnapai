@@ -1,33 +1,48 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import login, register, get_me, logout, refresh, oauth
 from starlette.middleware.sessions import SessionMiddleware
-from app.database import Base, engine
+from app.core.config import settings
+from app.core.database import Base, engine
+from app.routes import get_me, login, logout, oauth, refresh, register
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize database tables on startup
+    Base.metadata.create_all(bind=engine)
+    yield
+    # Cleanup resources on shutdown (if any)
+
+
 app = FastAPI(
-    title="FoodSnapAI - Food Service",
-    description="Handles image uploads, analysis processing, food history, and nutrition tracking.",
+    title="FoodSnapAI - Auth Service",
+    description="Authentication and user profile management microservice.",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key="your-super-secret-key-here"  # Replace with a strong, random string
+    secret_key=settings.session_secret_key,
 )
-# CORS Configuration
-origins = [
-    "http://api-gateway:8000",       # Internal Docker container name
-    "http://127.0.0.1:8000",         # Host machine loopback (for local testing)
-    "http://localhost:8000",         # Host machine localhost
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(login.router)
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {"status": "ok", "service": "auth-service"}
+
+
 app.include_router(register.router)
+app.include_router(login.router)
 app.include_router(logout.router)
 app.include_router(get_me.router)
 app.include_router(refresh.router)

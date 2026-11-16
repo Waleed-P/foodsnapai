@@ -1,35 +1,31 @@
+import asyncio
+import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import websockets
-import asyncio
-import os
+from app.core.config import settings
 
-router = APIRouter()
+logger = logging.getLogger("gateway.ws")
+router = APIRouter(tags=["WebSocket"])
 
-FOOD_SERVICE_WS_URL = os.environ["FOOD_SERVICE_WS_URL"]
 
 @router.websocket("/ws/food/{food_id}")
 async def proxy_food_websocket(websocket: WebSocket, food_id: int):
-    # 1. Origin Check
+    # Origin check
     client_origin = websocket.headers.get("origin")
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://192.168.31.226:3000",
-        "*"
-    ]
-    
-    if client_origin in allowed_origins or "*" in allowed_origins:
-        await websocket.accept()
-    else:
+    allowed_origins = set(settings.cors_origins + ["http://localhost:3000", "http://127.0.0.1:3000"])
+
+    if client_origin and client_origin not in allowed_origins:
+        logger.warning(f"Rejected WS connection from disallowed origin: {client_origin}")
         await websocket.close(code=1008)
         return
 
-    # 2. Proxy connection to downstream Food Service
-    target_url = f"{FOOD_SERVICE_WS_URL}/ws/food/{food_id}"
+    await websocket.accept()
+
+    target_url = f"{settings.food_service_ws_url}/ws/food/{food_id}"
+    logger.info(f"Connecting WebSocket proxy to downstream: {target_url}")
 
     try:
         async with websockets.connect(target_url) as backend_ws:
-            
             async def forward_backend_to_client():
                 try:
                     async for message in backend_ws:
@@ -45,26 +41,26 @@ async def proxy_food_websocket(websocket: WebSocket, food_id: int):
                 except (WebSocketDisconnect, Exception):
                     pass
 
-            # FIRST TASK TO FINISH CANCELS THE OTHER
             done, pending = await asyncio.wait(
                 [
                     asyncio.create_task(forward_backend_to_client()),
-                    asyncio.create_task(forward_client_to_backend())
+                    asyncio.create_task(forward_client_to_backend()),
                 ],
-                return_when=asyncio.FIRST_COMPLETED
+                return_when=asyncio.FIRST_COMPLETED,
             )
 
-            # Clean up pending task
             for task in pending:
                 task.cancel()
 
     except (websockets.exceptions.WebSocketException, ConnectionRefusedError) as e:
-        print(f"Failed to connect to Food Service WS: {e}")
-        await websocket.close(code=1011)
+        logger.error(f"Failed to connect to Food Service WS at {target_url}: {e}")
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
     except WebSocketDisconnect:
-        print("Client disconnected from Gateway WS")
+        logger.info(f"Client disconnected from Gateway WS for food_id {food_id}")
     finally:
-        # Ensure client connection closes gracefully
         try:
             await websocket.close()
         except Exception:

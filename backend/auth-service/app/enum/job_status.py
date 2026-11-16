@@ -1,7 +1,3 @@
-from enum import Enum
+from app.enums.job_status import JobStatus
 
-class JobStatus(str, Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+__all__ = ["JobStatus"]

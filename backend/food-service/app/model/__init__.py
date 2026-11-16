@@ -1,3 +1,4 @@
-# app/model/__init__.py
-from app.model.food import FoodItemModel
-from app.model.user import UserModel  # Ensure UserModel is loaded in registry
+from app.models.food import FoodItemModel
+from app.models.user import UserModel
+
+__all__ = ["FoodItemModel", "UserModel"]

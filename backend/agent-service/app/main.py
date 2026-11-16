@@ -1,21 +1,39 @@
-from app.ai_agent.agent import Agent
-from app.ai_agent.client import client
-from app.ai_agent.schemas import TOOLS
-from app.ai_agent.prompts import SYSTEM_PROMPT
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.routes import agent
 
 
-agent = Agent(
-    client=client,
-    system=SYSTEM_PROMPT,
-    tools=TOOLS,
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
+
+app = FastAPI(
+    title="FoodSnapAI - Agent Service",
+    description="Conversational AI Nutrition Intelligence Service powered by Groq LLM and tool calling.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-response = agent(
-    "provide my nutrition intake on yesterday"
-)
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {
+        "status": "ok",
+        "service": "agent-service",
+        "model": settings.groq_model,
+        "food_service_url": settings.food_service_url,
+    }
 
 
-
-print("\nFinal answer:")
-print(response)
+app.include_router(agent.router)

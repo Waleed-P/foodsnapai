@@ -1,12 +1,3 @@
-from pydantic import BaseModel, EmailStr
+from app.schemas.auth import UserCreateSchema, LoginSchema
 
-
-class UserCreateSchema(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-
-
-class LoginSchema(BaseModel):
-    email: EmailStr
-    password: str
+__all__ = ["UserCreateSchema", "LoginSchema"]

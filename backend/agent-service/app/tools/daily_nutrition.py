@@ -1,39 +1,37 @@
-def get_daily_nutrition(user_id: int, date: str):
-    """
-    Demo tool that returns total nutrition analyzed
-    by a user for a specific date.
-    """
+import logging
+from typing import Any, Dict
+import httpx
+from app.core.config import settings
 
-    demo_data = {
-        "2026-09-14": {
-            "date": "2026-09-14",
-            "total_calories": 835,
-            "protein": 65.3,
-            "carbohydrates": 82,
-            "fat": 28.3,
-            "fiber": 8.5,
-            "calcium": 320,
-            "iron": 5.8,
-            "vitamin_c": 42,
-        },
+logger = logging.getLogger("agent.tools.daily_nutrition")
 
-        "2026-09-13": {
-            "date": "2026-09-13",
-            "total_calories": 650,
-            "protein": 18,
-            "carbohydrates": 37,
-            "fat": 19,
-            "fiber": 6.2,
-            "calcium": 280,
-            "iron": 4.1,
-            "vitamin_c": 35,
-        },
+
+def get_daily_nutrition(user_id: int, date: str, auth_token: str | None = None) -> Dict[str, Any]:
+    """
+    Fetches total nutrition for a user on a specific date from Food Service.
+    """
+    try:
+        cookies = {"access_token": auth_token} if auth_token else {}
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+
+        with httpx.Client(timeout=5.0) as client:
+            res = client.get(
+                f"{settings.food_service_url}/food/nutrition/daily",
+                params={"date": date},
+                cookies=cookies,
+                headers=headers,
+            )
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        logger.warning(f"Could not reach Food Service for daily nutrition: {e}")
+
+    # Fallback response
+    return {
+        "date": date,
+        "message": f"No nutrition records found for date {date}.",
+        "total_calories": 0.0,
+        "protein": 0.0,
+        "carbohydrates": 0.0,
+        "fat": 0.0,
     }
-
-    return demo_data.get(
-        date,
-        {
-            "date": date,
-            "message": "No nutrition analysis found for this date."
-        }
-    )

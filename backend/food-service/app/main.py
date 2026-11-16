@@ -1,26 +1,40 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import upload, history, web_socket
+from app.core.config import settings
+from app.core.database import Base, engine
+from app.routes import history, nutrition, upload, web_socket
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure database schema is initialized
+    Base.metadata.create_all(bind=engine)
+    yield
+
 
 app = FastAPI(
     title="FoodSnapAI - Food Service",
-    description="Handles image uploads, analysis processing, food history, and nutrition tracking.",
+    description="Handles image uploads, AI prediction analysis, food history, and nutrition tracking.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
-# CORS Configuration
-origins = [
-    "http://api-gateway:8000",       # Internal Docker container name
-    "http://127.0.0.1:8000",         # Host machine loopback (for local testing)
-    "http://localhost:8000",         # Host machine localhost
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(history.router)
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {"status": "ok", "service": "food-service"}
+
+
 app.include_router(upload.router)
+app.include_router(history.router)
+app.include_router(nutrition.router)
 app.include_router(web_socket.router)

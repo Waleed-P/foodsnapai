@@ -1,54 +1,35 @@
-from datetime import date
+import logging
+from typing import Any, Dict, List
+import httpx
+from app.core.config import settings
+
+logger = logging.getLogger("agent.tools.food_history")
 
 
-def get_food_history(user_id: int, date: str):
+def get_food_history(user_id: int, date: str, auth_token: str | None = None) -> List[Dict[str, Any]]:
     """
-    Demo tool that returns food analyses for a user on a specific date.
+    Fetches food items for a user on a specific date.
     """
+    try:
+        cookies = {"access_token": auth_token} if auth_token else {}
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
 
-    demo_data = {
-        "2026-09-14": [
-            {
-                "food_name": "Chicken Biryani",
-                "calories": 450,
-                "protein": 22,
-                "carbohydrates": 55,
-                "fat": 16,
-            },
-            {
-                "food_name": "Banana",
-                "calories": 105,
-                "protein": 1.3,
-                "carbohydrates": 27,
-                "fat": 0.3,
-            },
-            {
-                "food_name": "Grilled Chicken",
-                "calories": 280,
-                "protein": 42,
-                "carbohydrates": 0,
-                "fat": 12,
-            },
-        ],
-        "2026-09-13": [
-            {
-                "food_name": "Dosa",
-                "calories": 168,
-                "protein": 4,
-                "carbohydrates": 29,
-                "fat": 4,
-            },
-            {
-                "food_name": "Egg Curry",
-                "calories": 220,
-                "protein": 14,
-                "carbohydrates": 8,
-                "fat": 15,
-            },
-        ],
-    }
+        with httpx.Client(timeout=5.0) as client:
+            res = client.get(
+                f"{settings.food_service_url}/food/history",
+                cookies=cookies,
+                headers=headers,
+            )
+            if res.status_code == 200:
+                data = res.json()
+                history = data.get("history", [])
+                # Filter for the requested date
+                matched = [
+                    item for item in history
+                    if item.get("created_at", "").startswith(date)
+                ]
+                return matched
+    except Exception as e:
+        logger.warning(f"Could not reach Food Service for food history: {e}")
 
-    return demo_data.get(
-        date,
-        []
-    )
+    return []
